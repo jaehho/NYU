@@ -6,8 +6,6 @@ def snapshot(event: str, frame, min_area=500, state=None):
         return state
     if event == "set_bg":
         state["bg"] = frame.copy(); return state
-    if event == "reset":
-        state["bg"] = None; return state
     if event == "detect":
         bg = state.get("bg");
         if bg is None: return False, state
