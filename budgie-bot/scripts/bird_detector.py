@@ -5,7 +5,7 @@ import importlib
 import configparser
 import cv2
 
-# configuration
+# Configuration
 cfg = configparser.ConfigParser()
 config_path = Path.cwd() / "config.ini"
 if not cfg.read(config_path):
@@ -20,7 +20,7 @@ FONT = cv2.FONT_HERSHEY_SIMPLEX
 FONT_SCALE = float(cfg.get("label", "font_scale", fallback="0.7"))
 FONT_THK = int(cfg.get("label", "thickness", fallback="2"))
 
-# detector dynamic import
+# Dynamic detector import
 try:
     det_module = importlib.import_module(f"budgie_bot.detectors.{MODE}")
     detector   = getattr(det_module, MODE)
@@ -28,7 +28,7 @@ except (ModuleNotFoundError, AttributeError) as e:
     print(f"[ERROR] detector '{MODE}' not found: {e}", file=sys.stderr)
     sys.exit(1)
 
-# worker thread function
+# Worker thread
 def camera_worker(cam_id: str,
                   frame_q: queue.Queue[tuple[str, cv2.Mat]],
                   ctrl_q:  queue.Queue[str]):
@@ -43,9 +43,9 @@ def camera_worker(cam_id: str,
         cap.release()
         return
 
-    state = detector("init", first_frame, MIN_AREA)
-    period = 1.0 / FPS
-    last_inf_t = 0.0
+    state       = detector("init", first_frame, MIN_AREA)
+    period      = 1.0 / FPS
+    last_inf_t  = 0.0
     last_motion = False
 
     while True:
@@ -60,7 +60,7 @@ def camera_worker(cam_id: str,
             last_motion   = bool(motion)
             print(f"{datetime.now().isoformat(timespec='seconds')},{cam_id},{int(motion)}")
 
-        # handle control messages (non‑blocking)
+        # non‑blocking control messages
         try:
             msg = ctrl_q.get_nowait()
             if msg == "set_bg":
@@ -68,16 +68,34 @@ def camera_worker(cam_id: str,
         except queue.Empty:
             pass
 
-        # annotate frame
+        # annotate main label
         label, ok_flag = ("BIRD", True) if last_motion else ("NO BIRD", False)
         color = (0, 255, 0) if ok_flag else (0, 0, 255)
         cv2.putText(frame, label, (10, 30), FONT, FONT_SCALE, color, FONT_THK, cv2.LINE_AA)
 
-        # push latest frame (overwrite if queue full)
-        try:
-            frame_q.get_nowait()
-        except queue.Empty:
-            pass
+        # draw background thumbnail inset (if available)
+        bg_img = state.get("bg") if isinstance(state, dict) else None
+        if bg_img is not None:
+            H, W = frame.shape[:2]
+            inset_h, inset_w = H // 4, W // 4           # ¼‑size thumbnail
+            bg_thumb = cv2.resize(bg_img, (inset_w, inset_h))
+
+            # destination ROI (10‑px margin from bottom‑right)
+            y1, y2 = H - inset_h - 10, H - 10
+            x1, x2 = W - inset_w - 10, W - 10
+
+            # blend thumbnail over ROI for transparency effect
+            roi = frame[y1:y2, x1:x2]
+            cv2.addWeighted(bg_thumb, 0.4, roi, 0.6, 0, dst=roi)
+
+            # thin white border
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 255), 1)
+            cv2.putText(frame, "BG", (x1 + 4, y1 + 14),
+                        FONT, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+
+        # push latest frame (overwrite queue if full)
+        try: frame_q.get_nowait()
+        except queue.Empty: pass
         frame_q.put_nowait((cam_id, frame))
 
     cap.release()
@@ -102,7 +120,7 @@ if __name__ == "__main__":
         while True:
             any_alive = False
 
-            # display most‑recent frames
+            # Display most‑recent frames
             for cid, fq in zip(CAMERAS, frame_queues):
                 try:
                     cam_id, frame = fq.get_nowait()
@@ -110,11 +128,11 @@ if __name__ == "__main__":
                 except queue.Empty:
                     pass
 
-            # keyboard handling
+            # Keyboard handling
             key = cv2.waitKey(1) & 0xFF
-            if key == 27:          # Esc -> quit
+            if key == 27:                    # Esc -> quit
                 break
-            elif key in key2idx:   # number key -> reset that camera’s BG
+            elif key in key2idx:             # digit -> reset BG for that cam
                 idx = key2idx[key]
                 if idx < len(ctrl_queues):
                     try:
