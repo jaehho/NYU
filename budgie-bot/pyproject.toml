@@ -1,0 +1,33 @@
+[project]
+name = "budgie-bot"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Jaeho Cho",email = "jaeho2025@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "sounddevice",
+    "numpy",
+    "matplotlib",
+    "pyfirmata2",
+    "ultralytics",
+    "torch (==2.7.1+cu128)"
+]
+
+[tool.poetry]
+packages = [{include = "budgie_bot", from = "src"}]
+
+[[tool.poetry.source]]
+name = "pypi"
+priority = "primary"
+
+[[tool.poetry.source]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+priority = "explicit"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
