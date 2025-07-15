@@ -1,29 +1,36 @@
-import sys
-import time
-import threading
+"""
+Bird‑detector orchestrator
+--------------------------
+• Reads camera IDs and parameters from config.ini.
+• Spawns one worker thread per camera: capture → detector → annotate.
+• Each worker pushes the latest annotated frame into a Queue(maxsize=1).
+• Main thread only handles GUI: imshow + waitKey + window teardown.
+• Clean shutdown with Esc (GUI) or Ctrl‑C (terminal).
+"""
+
+import sys, time, threading, queue, signal
 from datetime import datetime
 from pathlib import Path
-import configparser
 import importlib
-
+import configparser
 import cv2
 
-# Configuration
-cfg = configparser.ConfigParser()
+# configuration
+cfg         = configparser.ConfigParser()
 config_path = Path.cwd() / "config.ini"
 if not cfg.read(config_path):
     print(f"[WARN] config.ini not found at {config_path}. Using defaults.", file=sys.stderr)
 
-CAMERAS  = [c.strip() for c in cfg.get("general", "camera_ids",  fallback="0").split(",")]
-FPS      = float(cfg.get("general", "inference_fps",   fallback="5"))
-MIN_AREA = int(  cfg.get("general", "min_motion_area", fallback="500"))
-MODE     = cfg.get("general", "detection_mode", fallback="snapshot").lower()
+CAMERAS  = [c.strip() for c in cfg.get("general", "camera_ids",   fallback="0").split(",")]
+FPS      = float(cfg.get("general", "inference_fps",              fallback="5"))
+MIN_AREA = int(  cfg.get("general", "min_motion_area",            fallback="500"))
+MODE     =       cfg.get("general", "detection_mode",             fallback="snapshot").lower()
 
-LABEL_FONT  = cv2.FONT_HERSHEY_SIMPLEX
-LABEL_SCALE = float(cfg.get("label", "font_scale", fallback="0.7"))
-LABEL_THK   = int(  cfg.get("label", "thickness",  fallback="2"))
+FONT       = cv2.FONT_HERSHEY_SIMPLEX
+FONT_SCALE = float(cfg.get("label", "font_scale",                 fallback="0.7"))
+FONT_THK   = int(  cfg.get("label", "thickness",                  fallback="2"))
 
-# Dynamic import: look for detectors.<mode> module exposing a function of the same name
+# detector dynamic import
 try:
     det_module = importlib.import_module(f"budgie_bot.detectors.{MODE}")
     detector   = getattr(det_module, MODE)
@@ -31,62 +38,104 @@ except (ModuleNotFoundError, AttributeError) as e:
     print(f"[ERROR] detector '{MODE}' not found: {e}", file=sys.stderr)
     sys.exit(1)
 
-def camera_worker(cam_id: str):
+# worker thread function
+def camera_worker(cam_id: str,
+                  frame_q: queue.Queue[tuple[str, cv2.Mat]],
+                  ctrl_q:  queue.Queue[str]):
     cap = cv2.VideoCapture(int(cam_id)) if cam_id.isdigit() else cv2.VideoCapture(cam_id)
     if not cap.isOpened():
         print(f"[ERROR] Cannot open camera {cam_id}", file=sys.stderr)
         return
 
-    detector_state = detector("init", cap.read()[1], MIN_AREA)
+    ok, first_frame = cap.read()
+    if not ok:
+        print(f"[ERROR] Camera {cam_id} returned no frames.", file=sys.stderr)
+        cap.release()
+        return
 
-    last_result, last_inf = None, 0.0
-    period = 1.0 / FPS
-    win_title = f"Cam {cam_id}"
+    state = detector("init", first_frame, MIN_AREA)
+    period     = 1.0 / FPS
+    last_inf_t = 0.0
+    last_motion= False
 
     while True:
         ok, frame = cap.read()
-        if not ok: break
-
-        key = cv2.pollKey() & 0xFF
-        if key == ord('b'):
-            detector_state = detector("set_bg", frame, MIN_AREA, detector_state)
-        elif key == ord('r'):
-            detector_state = detector("reset", frame, MIN_AREA, detector_state)
-        elif key == 27:
-            cap.release(); cv2.destroyAllWindows(); sys.exit()
-
-        now = time.time()
-        if now - last_inf >= period:
-            last_inf = now
-            motion, detector_state = detector("detect", frame, MIN_AREA, detector_state)
-            last_result = int(motion)
-            print(f"{datetime.now().isoformat(timespec='seconds')},{cam_id},{last_result}")
-
-        # choose label
-        if MODE in ("snapshot", "background") and detector_state.get("bg") is None:
-            label, ok_flag = "PRESS 'b' TO SET BG", False
-        else:
-            ok_flag = bool(last_result)
-            label = "BIRD" if ok_flag else "NO BIRD"
-
-
-        color = (0, 255, 0) if ok_flag else (0, 0, 255)
-        cv2.putText(frame, label, (10, 30),
-                    LABEL_FONT, LABEL_SCALE, color, LABEL_THK, cv2.LINE_AA)
-        cv2.imshow(win_title, frame)
-        if cv2.waitKey(1) & 0xFF == 27:
+        if not ok:
             break
 
-    cap.release(); cv2.destroyWindow(win_title)
+        now = time.time()
+        if now - last_inf_t >= period:
+            last_inf_t = now
+            motion, state = detector("detect", frame, MIN_AREA, state)
+            last_motion   = bool(motion)
+            print(f"{datetime.now().isoformat(timespec='seconds')},{cam_id},{int(motion)}")
+
+        # handle control messages (non‑blocking)
+        try:
+            msg = ctrl_q.get_nowait()
+            if msg == "set_bg":
+                state = detector("set_bg", frame, MIN_AREA, state)
+        except queue.Empty:
+            pass
+
+        # annotate frame
+        label, ok_flag = ("BIRD", True) if last_motion else ("NO BIRD", False)
+        color = (0, 255, 0) if ok_flag else (0, 0, 255)
+        cv2.putText(frame, label, (10, 30), FONT, FONT_SCALE, color, FONT_THK, cv2.LINE_AA)
+
+        # push latest frame (overwrite if queue full)
+        try:
+            frame_q.get_nowait()
+        except queue.Empty:
+            pass
+        frame_q.put_nowait((cam_id, frame))
+
+    cap.release()
 
 if __name__ == "__main__":
-    workers = [threading.Thread(target=camera_worker, args=(cid,), daemon=True)
-               for cid in CAMERAS]
-    for t in workers: t.start()
+    frame_queues = [queue.Queue(maxsize=1) for _ in CAMERAS]  # images
+    ctrl_queues  = [queue.Queue(maxsize=5) for _ in CAMERAS]  # commands
+
+    threads = [threading.Thread(target=camera_worker,
+                                args=(cid, fq, cq),
+                                daemon=True)
+               for cid, fq, cq in zip(CAMERAS, frame_queues, ctrl_queues)]
+    for t in threads:
+        t.start()
+
+    # tidy exit on Ctrl‑C in terminal
+    signal.signal(signal.SIGINT, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt))
 
     try:
-        while any(t.is_alive() for t in workers):
-            time.sleep(0.1)
+        while True:
+            any_alive = False
+
+            # display most‑recent frames
+            for cid, fq in zip(CAMERAS, frame_queues):
+                try:
+                    cam_id, frame = fq.get_nowait()
+                    cv2.imshow(f"Cam {cam_id}", frame)
+                except queue.Empty:
+                    pass
+
+            # keyboard handling
+            key = cv2.waitKey(1) & 0xFF
+            if key == 27:            # Esc → quit
+                break
+            elif key == ord('b'):    # set new background on all cameras
+                for cq in ctrl_queues:
+                    try:
+                        cq.put_nowait("set_bg")
+                    except queue.Full:
+                        pass
+
+            # keep windows responsive & detect finished threads
+            for t in threads:
+                any_alive |= t.is_alive()
+            if not any_alive:
+                break
+
     except KeyboardInterrupt:
-        pass
+        print("\n[INFO] Interrupted – shutting down…")
+
     cv2.destroyAllWindows()
