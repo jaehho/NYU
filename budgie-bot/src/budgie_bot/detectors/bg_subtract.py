@@ -1,6 +1,6 @@
 import cv2, numpy as np
 
-def snapshot(event: str, frame, min_area=500, state=None):
+def bg_subtract(event: str, frame, min_area=500, state=None):
     if state is None: state = {"bg": None}
     if event == "init":
         return state

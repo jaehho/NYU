@@ -14,7 +14,7 @@ if not cfg.read(config_path):
 CAMERAS = [c.strip() for c in cfg.get("general", "camera_ids", fallback="0").split(",")]
 FPS = float(cfg.get("general", "inference_fps", fallback="5"))
 MIN_AREA = int(cfg.get("general", "min_motion_area", fallback="500"))
-MODE = cfg.get("general", "detection_mode", fallback="snapshot").lower()
+MODE = cfg.get("general", "detection_mode", fallback="bg_subtract").lower()
 
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 FONT_SCALE = float(cfg.get("label", "font_scale", fallback="0.7"))
