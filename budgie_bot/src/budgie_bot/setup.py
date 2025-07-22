@@ -16,11 +16,15 @@ setup(
             [f for f in glob('launch/*') if os.path.isfile(f)]),
         (os.path.join('share', package_name, 'scripts'),
             [f for f in glob('scripts/*.py') if os.path.isfile(f)]),
+        (os.path.join('share', package_name, 'config'),
+            [f for f in glob('config/*.yaml') if os.path.isfile(f)]),
     ],
     install_requires=[
         'setuptools',
+        'matplotlib',
         'opencv-python',
         'cv_bridge',
+        'pyaudio',
     ],
     zip_safe=True,
     maintainer='Jaeho Cho',
@@ -31,6 +35,7 @@ setup(
     entry_points={
         'console_scripts': [
             'bird_detector = budgie_bot.bird_detector:main',
+            'audio_rms = budgie_bot.audio_rms:main',
         ],
     },
 )

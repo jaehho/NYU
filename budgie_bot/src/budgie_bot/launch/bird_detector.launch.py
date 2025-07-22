@@ -18,7 +18,7 @@ def generate_launch_description():
             Node(
                 package='budgie_bot',
                 executable='bird_detector',
-                name=f'camera_node_{cid}',
+                name=f'bird_detector_{cid}',
                 parameters=[
                     {'camera_id': cid,
                      'inference_fps': 5.0,

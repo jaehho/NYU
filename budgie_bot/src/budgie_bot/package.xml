@@ -16,8 +16,6 @@
   <exec_depend>rclpy</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
-  <exec_depend>cv_bridge</exec_depend>
-  <exec_depend>opencv_python</exec_depend>
   <exec_depend>ros2launch</exec_depend>
 
   <export>

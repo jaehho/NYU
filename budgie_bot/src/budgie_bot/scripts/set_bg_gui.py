@@ -8,7 +8,7 @@ from tkinter import messagebox
 class SetBGClient(Node):
     def __init__(self):
         super().__init__('set_bg_client')
-        self.service_prefix = '/set_background_'
+        self.service_prefix = '/cam/'
         self.service_type = 'std_srvs/srv/Trigger'
         self.latest_services = []
 
@@ -16,8 +16,9 @@ class SetBGClient(Node):
         services = self.get_service_names_and_types()
         return sorted([
             name for name, types in services
-            if self.service_type in types and name.startswith(self.service_prefix)
+            if self.service_type in types and name.endswith('/set_background')
         ])
+
 
     def send_request(self, service_name: str):
         client = self.create_client(Trigger, service_name)
@@ -49,7 +50,7 @@ def create_gui(node: SetBGClient):
             tk.Label(button_frame, text="No camera services found.").pack()
         else:
             for svc in services:
-                cam_id = svc.split('_')[-1]
+                cam_id = svc.split('/')[2]
                 btn = tk.Button(button_frame, text=f"Reset BG - Camera {cam_id}",
                                 command=lambda s=svc: call_service(s))
                 btn.pack(fill='x', pady=2)

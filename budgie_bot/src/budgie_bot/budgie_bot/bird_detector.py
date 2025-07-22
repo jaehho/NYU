@@ -31,9 +31,9 @@ class SingleCameraNode(Node):
         self.font = cv2.FONT_HERSHEY_SIMPLEX
         self.bridge = CvBridge()
 
-        self.motion_pub = self.create_publisher(String, f'motion_detected_{self.cam_id}', 10)
-        self.image_pub = self.create_publisher(Image, f'motion_frame_{self.cam_id}', 10)
-
+        self.motion_pub = self.create_publisher(String, 'motion_detected', 10)
+        self.image_pub = self.create_publisher(Image, 'motion_frame', 10)
+        
         # Load detector
         try:
             det_module = importlib.import_module(f"budgie_bot.detectors.{self.mode}")

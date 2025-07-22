@@ -1,0 +1,13 @@
+bird_detector_0:
+  ros__parameters:
+    camera_id: '0'
+    inference_fps: 5.0
+    min_motion_area: 500
+    detection_mode: 'bg_subtract'
+
+mic0_node:
+  ros__parameters:
+    device_index: 0
+    mic_name: 'mic0'
+    samplerate: 16000
+    blocksize: 1024
