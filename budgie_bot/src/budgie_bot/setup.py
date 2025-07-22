@@ -30,7 +30,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'bird_detector = budgie_bot.bird_detector:main'
+            'bird_detector = budgie_bot.bird_detector:main',
         ],
     },
 )

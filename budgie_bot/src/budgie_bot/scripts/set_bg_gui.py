@@ -1,7 +1,6 @@
 import rclpy
 from rclpy.node import Node
-from custom_interfaces.srv import SetBG
-
+from std_srvs.srv import Trigger
 import tkinter as tk
 from tkinter import messagebox
 
@@ -9,55 +8,75 @@ from tkinter import messagebox
 class SetBGClient(Node):
     def __init__(self):
         super().__init__('set_bg_client')
-        self.cli = self.create_client(SetBG, 'set_background')
+        self.service_prefix = '/set_background_'
+        self.service_type = 'std_srvs/srv/Trigger'
+        self.latest_services = []
 
-        while not self.cli.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info('Service not available, waiting...')
+    def get_matching_services(self):
+        services = self.get_service_names_and_types()
+        return sorted([
+            name for name, types in services
+            if self.service_type in types and name.startswith(self.service_prefix)
+        ])
 
-    def send_request(self, cam_id: str):
-        req = SetBG.Request()
-        req.camera_id = cam_id
-        future = self.cli.call_async(req)
+    def send_request(self, service_name: str):
+        client = self.create_client(Trigger, service_name)
+        if not client.wait_for_service(timeout_sec=2.0):
+            raise RuntimeError(f"Service {service_name} not available.")
+        req = Trigger.Request()
+        future = client.call_async(req)
         rclpy.spin_until_future_complete(self, future)
         return future.result()
 
 
-def create_gui(client_node):
-    def call_service():
-        cam_id = entry.get().strip()
-        if not cam_id:
-            messagebox.showwarning("Input Error", "Please enter a camera ID.")
-            return
+def create_gui(node: SetBGClient):
+    root = tk.Tk()
+    root.title("Set Background Controls")
 
+    tk.Label(root, text="Available Cameras").pack(pady=(10, 5))
+
+    button_frame = tk.Frame(root)
+    button_frame.pack(padx=10, pady=5)
+
+    def refresh_buttons():
+        for widget in button_frame.winfo_children():
+            widget.destroy()
+
+        services = node.get_matching_services()
+        node.latest_services = services
+
+        if not services:
+            tk.Label(button_frame, text="No camera services found.").pack()
+        else:
+            for svc in services:
+                cam_id = svc.split('_')[-1]
+                btn = tk.Button(button_frame, text=f"Reset BG - Camera {cam_id}",
+                                command=lambda s=svc: call_service(s))
+                btn.pack(fill='x', pady=2)
+
+        root.after(5000, refresh_buttons)  # refresh every 5 sec
+
+    def call_service(service_name):
         try:
-            result = client_node.send_request(cam_id)
+            result = node.send_request(service_name)
             if result.success:
                 messagebox.showinfo("Success", result.message)
             else:
-                messagebox.showerror("Failure", result.message)
+                messagebox.showerror("Failed", result.message)
         except Exception as e:
-            messagebox.showerror("Error", f"Service call failed: {e}")
+            messagebox.showerror("Error", str(e))
 
-    root = tk.Tk()
-    root.title("Set Background")
-
-    tk.Label(root, text="Camera ID:").grid(row=0, column=0, padx=10, pady=10)
-    entry = tk.Entry(root)
-    entry.grid(row=0, column=1, padx=10)
-
-    tk.Button(root, text="Set BG", command=call_service).grid(row=1, column=0, columnspan=2, pady=10)
-
+    refresh_buttons()
     root.mainloop()
 
 
 def main():
     rclpy.init()
-    client_node = SetBGClient()
-
+    node = SetBGClient()
     try:
-        create_gui(client_node)
+        create_gui(node)
     finally:
-        client_node.destroy_node()
+        node.destroy_node()
         rclpy.shutdown()
 
 
