@@ -25,6 +25,7 @@ setup(
         'opencv-python',
         'cv_bridge',
         'pyaudio',
+        'pyfirmata2',
     ],
     zip_safe=True,
     maintainer='Jaeho Cho',
@@ -36,6 +37,8 @@ setup(
         'console_scripts': [
             'bird_detector = budgie_bot.bird_detector:main',
             'audio_rms = budgie_bot.audio_rms:main',
+            'audio_spectrogram = budgie_bot.audio_spectrogram:main',
+            'react_behavior = budgie_bot.react_behavior:main',
         ],
     },
 )

@@ -18,6 +18,7 @@ def generate_launch_description():
     launch_actions = []
     mic_plot_topics = []
 
+
     for node_name, node_config in config_data.items():
         params = node_config['ros__parameters']
 
@@ -58,6 +59,22 @@ def generate_launch_description():
                     remappings=[
                         ('audio_amplitude', 'audio_amplitude')
                     ],
+                    output='screen'
+                )
+            )
+
+            launch_actions.append(
+                Node(
+                    package='budgie_bot',
+                    executable='audio_spectrogram',
+                    name=f"{mic_name}_spectrogram",
+                    namespace=namespace,
+                    parameters=[{
+                        'mic_name': mic_name,
+                        'samplerate': params['samplerate'],
+                        'fft_size': 512,
+                        'history_len': 100
+                    }],
                     output='screen'
                 )
             )

@@ -1,6 +1,7 @@
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Float32
+from std_msgs.msg import Float32, Float32MultiArray
+
 
 import sounddevice as sd
 import numpy as np
@@ -22,6 +23,7 @@ class MultiMicAmplitudePublisher(Node):
         self.blocksize = self.get_parameter('blocksize').value
 
         self.publisher_ = self.create_publisher(Float32, 'audio_amplitude', 10)
+        self.buffer_pub = self.create_publisher(Float32MultiArray, 'audio_buffer', 10)
 
         self.stream = sd.InputStream(
             device=self.device_index,
@@ -44,6 +46,10 @@ class MultiMicAmplitudePublisher(Node):
         msg = Float32()
         msg.data = amplitude
         self.publisher_.publish(msg)
+                
+        buf_msg = Float32MultiArray()
+        buf_msg.data = indata.flatten().tolist()
+        self.buffer_pub.publish(buf_msg)
 
     def destroy_node(self):
         self.stream.stop()

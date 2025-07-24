@@ -11,3 +11,10 @@ mic0_node:
     mic_name: 'mic0'
     samplerate: 16000
     blocksize: 1024
+
+mic0_spectrogram:
+  ros__parameters:
+    mic_name: 'mic0'
+    samplerate: 16000
+    fft_size: 512
+    history_len: 300
