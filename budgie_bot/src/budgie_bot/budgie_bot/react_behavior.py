@@ -15,7 +15,7 @@ class MotorTriggerArduinoNode(Node):
         self.declare_parameter('motor_pwm_pin', 9)
         self.declare_parameter('motor_on_duty', 1.0)
         self.declare_parameter('motor_off_duty', 0.0)
-        self.declare_parameter('device_path', pyfirmata2.Arduino.AUTODETECT)
+        self.declare_parameter('device_path', 'COM3')
         self.declare_parameter('amplitude_topic', 'audio_amplitude')
         self.declare_parameter('chirp_samplerate', 44100)
         self.declare_parameter('chirp_duration', 0.2)       # seconds
@@ -42,13 +42,20 @@ class MotorTriggerArduinoNode(Node):
         self.chirp_wave = self.generate_chirp()
 
         # Setup Arduino
+        self.board = None
+        self.pwm_pin = None
+
         try:
-            self.board = pyfirmata2.Arduino(self.device_path)
-            self.pwm_pin = self.board.get_pin(f'd:{self.motor_pwm_pin}:p')
-            self.get_logger().info(f"Arduino connected on {self.device_path}, using pin D{self.motor_pwm_pin}")
+            if self.device_path.lower() != 'none':
+                self.board = pyfirmata2.Arduino(self.device_path)
+                self.pwm_pin = self.board.get_pin(f'd:{self.motor_pwm_pin}:p')
+                self.get_logger().info(f"Arduino connected on {self.device_path}, using pin D{self.motor_pwm_pin}")
+            else:
+                self.get_logger().warn("device_path is set to 'None'; skipping Arduino connection.")
         except Exception as e:
             self.get_logger().error(f"Failed to connect to Arduino: {e}")
-            raise e
+            self.get_logger().warn("Continuing without motor control. Only chirp will function.")
+
 
         self.motor_state = False
         self.subscription = self.create_subscription(
@@ -83,8 +90,11 @@ class MotorTriggerArduinoNode(Node):
             self.get_logger().info(f"Amplitude {amplitude:.3f} <= threshold; motor OFF")
 
     def set_motor_pwm(self, duty):
-        duty = max(0.0, min(1.0, duty))  # Clamp
-        self.pwm_pin.write(duty)
+        if self.pwm_pin is not None:
+            duty = max(0.0, min(1.0, duty))  # Clamp
+            self.pwm_pin.write(duty)
+        else:
+            self.get_logger().debug("Motor PWM not available; skipping motor write.")
 
     def destroy_node(self):
         self.set_motor_pwm(0.0)

@@ -4,7 +4,7 @@ from launch.actions import ExecuteProcess
 import os
 import yaml
 from ament_index_python.packages import get_package_share_directory
-
+import pyfirmata2
 
 def generate_launch_description():
     package_dir = get_package_share_directory('budgie_bot')
@@ -81,6 +81,31 @@ def generate_launch_description():
 
             # Track for rqt_plot
             mic_plot_topics.append(f'/{namespace}/audio_amplitude/data')
+
+    # Motor trigger node (single global motor controller)
+    react_behavior_params = {
+        'amplitude_threshold': 0.05,
+        'device_path': str(pyfirmata2.Arduino.AUTODETECT),
+        'motor_pwm_pin': 9,
+        'motor_on_duty': 1.0,
+        'motor_off_duty': 0.0,
+        'amplitude_topic': '/mic0/audio_amplitude/data',  # or whichever mic you want to track
+        'chirp_samplerate': 44100,
+        'chirp_duration': 0.2,
+        'chirp_freq_start': 500.0,
+        'chirp_freq_end': 2000.0,
+        'chirp_volume': 0.3
+    }
+
+    launch_actions.append(
+        Node(
+            package='budgie_bot',
+            executable='react_behavior',
+            name='react_behavior',
+            parameters=[react_behavior_params],
+            output='screen'
+        )
+    )
 
     # Launch GUI to control camera background resets
     launch_actions.append(
