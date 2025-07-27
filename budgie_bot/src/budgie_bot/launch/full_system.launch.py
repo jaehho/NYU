@@ -4,7 +4,7 @@ from launch.actions import ExecuteProcess
 import os
 import yaml
 from ament_index_python.packages import get_package_share_directory
-import pyfirmata2
+
 
 def generate_launch_description():
     package_dir = get_package_share_directory('budgie_bot')
@@ -18,14 +18,13 @@ def generate_launch_description():
     launch_actions = []
     mic_plot_topics = []
 
-
     for node_name, node_config in config_data.items():
-        params = node_config['ros__parameters']
+        params = node_config.get('ros__parameters', {})
 
         # Bird detector node
         if node_name.startswith('bird_detector_'):
-            cam_id = params.get('camera_id', '0')
-            namespace = f'cam{cam_id}'  # Avoid numeric namespace segment
+            cam_id = str(params.get('camera_id', '0'))
+            namespace = f'cam{cam_id}'  # Avoid numeric-only namespaces
 
             launch_actions.append(
                 Node(
@@ -34,21 +33,17 @@ def generate_launch_description():
                     name=node_name,
                     namespace=namespace,
                     parameters=[params],
-                    remappings=[
-                        ('motion_detected', 'motion_detected'),
-                        ('motion_frame', 'motion_frame'),
-                        (f'set_background_{cam_id}', 'set_background')
-                    ],
                     output='screen'
                 )
             )
 
-        # Mic amplitude node
+        # Mic amplitude and spectrogram nodes
         elif node_name.startswith('mic') and node_name.endswith('_node'):
             mic_name = params.get('mic_name', 'micX')
             mic_suffix = mic_name[-1]  # '0' from 'mic0'
             namespace = f'mic{mic_suffix}'
 
+            # Amplitude node
             launch_actions.append(
                 Node(
                     package='budgie_bot',
@@ -56,58 +51,37 @@ def generate_launch_description():
                     name=node_name,
                     namespace=namespace,
                     parameters=[params],
-                    remappings=[
-                        ('audio_amplitude', 'audio_amplitude')
-                    ],
                     output='screen'
                 )
             )
 
+            # Spectrogram node (reuses mic params)
             launch_actions.append(
                 Node(
                     package='budgie_bot',
                     executable='audio_spectrogram',
                     name=f"{mic_name}_spectrogram",
                     namespace=namespace,
-                    parameters=[{
-                        'mic_name': mic_name,
-                        'samplerate': params['samplerate'],
-                        'fft_size': 512,
-                        'history_len': 100
-                    }],
+                    parameters=[params],
                     output='screen'
                 )
             )
 
-            # Track for rqt_plot
             mic_plot_topics.append(f'/{namespace}/audio_amplitude/data')
 
-    # Motor trigger node (single global motor controller)
-    react_behavior_params = {
-        'amplitude_threshold': 0.05,
-        'device_path': str(pyfirmata2.Arduino.AUTODETECT),
-        'motor_pwm_pin': 9,
-        'motor_on_duty': 1.0,
-        'motor_off_duty': 0.0,
-        'amplitude_topic': '/mic0/audio_amplitude/data',  # or whichever mic you want to track
-        'chirp_samplerate': 44100,
-        'chirp_duration': 0.2,
-        'chirp_freq_start': 500.0,
-        'chirp_freq_end': 2000.0,
-        'chirp_volume': 0.3
-    }
+        # React behavior node (motor trigger)
+        elif node_name == 'react_behavior':
+            launch_actions.append(
+                Node(
+                    package='budgie_bot',
+                    executable='react_behavior',
+                    name='react_behavior',
+                    parameters=[params],
+                    output='screen',
+                )
+            )
 
-    launch_actions.append(
-        Node(
-            package='budgie_bot',
-            executable='react_behavior',
-            name='react_behavior',
-            parameters=[react_behavior_params],
-            output='screen'
-        )
-    )
-
-    # Launch GUI to control camera background resets
+    # Launch background reset GUI
     launch_actions.append(
         ExecuteProcess(
             cmd=['python', gui_script],
@@ -116,7 +90,7 @@ def generate_launch_description():
         )
     )
 
-    # One rqt_plot for all mic amplitude curves
+    # rqt_plot for mic amplitude curves
     if mic_plot_topics:
         launch_actions.append(
             ExecuteProcess(
@@ -125,5 +99,14 @@ def generate_launch_description():
                 shell=False
             )
         )
+
+    # rqt_console for logs
+    launch_actions.append(
+        ExecuteProcess(
+            cmd=['ros2', 'run', 'rqt_console', 'rqt_console'],
+            output='screen',
+            shell=False
+        )
+    )
 
     return LaunchDescription(launch_actions)

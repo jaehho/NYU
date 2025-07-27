@@ -1,20 +1,24 @@
-bird_detector_0:
+bird_detector_cam0:
   ros__parameters:
-    camera_id: '0'
-    inference_fps: 5.0
-    min_motion_area: 500
-    detection_mode: 'bg_subtract'
+    camera_id: "d0"
 
 mic0_node:
   ros__parameters:
-    device_index: 0
-    mic_name: 'mic0'
-    samplerate: 16000
-    blocksize: 1024
-
-mic0_spectrogram:
-  ros__parameters:
-    mic_name: 'mic0'
+    mic_name: "mic0"
     samplerate: 16000
     fft_size: 512
-    history_len: 300
+    history_len: 150
+
+react_behavior:
+  ros__parameters:
+    amplitude_threshold: 0.05
+    device_path: "AUTODETECT"
+    motor_pwm_pin: 9
+    motor_on_duty: 1.0
+    motor_off_duty: 0.0
+    amplitude_topic: "/mic0/audio_amplitude"
+    chirp_samplerate: 44100
+    chirp_duration: 0.2
+    chirp_freq_start: 500.0
+    chirp_freq_end: 2000.0
+    chirp_volume: 0.3

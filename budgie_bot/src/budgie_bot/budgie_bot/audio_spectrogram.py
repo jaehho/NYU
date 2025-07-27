@@ -49,13 +49,22 @@ class SpectrogramImageViewer(Node):
         norm_spec = np.interp(spec_db, (spec_db.min(), spec_db.max()), (0, 255)).astype(np.uint8)
 
         color_img = cv2.applyColorMap(norm_spec, cv2.COLORMAP_TURBO)
+
+        # Flip vertically so low frequencies are at the bottom
+        flipped_img = cv2.flip(color_img, 0)
+
+        # ✅ Resize image for display (scale up horizontally)
+        scale_factor = 2  # or higher depending on how wide you want it
+        resized_img = cv2.resize(
+            flipped_img,
+            (flipped_img.shape[1] * scale_factor, flipped_img.shape[0]),
+            interpolation=cv2.INTER_LINEAR
+        )
+
         window_name = f"Spectrogram - {self.mic_name}"
-        cv2.imshow(window_name, color_img)
+        cv2.imshow(window_name, resized_img)
         cv2.waitKey(1)
 
-    def destroy_node(self):
-        cv2.destroyAllWindows()
-        super().destroy_node()
 
 def main(args=None):
     rclpy.init(args=args)
