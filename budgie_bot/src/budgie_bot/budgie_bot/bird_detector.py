@@ -21,7 +21,7 @@ class SingleCameraNode(Node):
         self.declare_parameter('font_scale', 0.7)
         self.declare_parameter('font_thickness', 2)
 
-        self.cam_id = self.get_parameter('camera_id').get_parameter_value().string_value
+        self.cam_id = self.get_parameter('camera_id').value
         self.fps = self.get_parameter('inference_fps').value
         self.min_area = self.get_parameter('min_motion_area').value
         self.mode = self.get_parameter('detection_mode').value
@@ -44,6 +44,9 @@ class SingleCameraNode(Node):
             return
 
         self.cap = cv2.VideoCapture(int(self.cam_id)) if self.cam_id.isdigit() else cv2.VideoCapture(self.cam_id)
+        
+        # Set video codec for WSL2 compatibility (comment out if not needed)
+        self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
         if not self.cap.isOpened():
             self.get_logger().error(f"Could not open camera {self.cam_id}")
             rclpy.shutdown()
@@ -61,7 +64,7 @@ class SingleCameraNode(Node):
         self.bg_reset = False
 
         self.create_timer(1.0 / self.fps, self.process_frame)
-        self.create_service(Trigger, f'set_background_{self.cam_id}', self.handle_set_background)
+        self.create_service(Trigger, f'/cam/cam{self.cam_id}/set_background', self.handle_set_background)
 
     def process_frame(self):
         ok, frame = self.cap.read()

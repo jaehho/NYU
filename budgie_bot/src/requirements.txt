@@ -1,0 +1,3 @@
+opencv-python
+pyfirmata2
+ultralytics

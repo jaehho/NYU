@@ -12,7 +12,7 @@ class ReactBehaviorNode(Node):
 
         # Declare parameters with defaults
         self.declare_parameter('amplitude_threshold', 0.05)
-        self.declare_parameter('device_path', 'None')  # Will be string 'None' if not set
+        self.declare_parameter('device_path', 'None')
         self.declare_parameter('motor_pwm_pin', 9)
         self.declare_parameter('motor_on_duty', 1.0)
         self.declare_parameter('motor_off_duty', 0.0)
@@ -46,15 +46,16 @@ class ReactBehaviorNode(Node):
         self.pwm_pin = None
 
         try:
-            if self.device_path.lower() != 'none':
+            if self.device_path.lower() == 'autodetect':
+                self.board = pyfirmata2.Arduino(pyfirmata2.Arduino.AUTODETECT)
+                self.pwm_pin = self.board.get_pin(f'd:{self.motor_pwm_pin}:p')
+                self.get_logger().info("Arduino connected using autodetect mode.")
+            else:
                 self.board = pyfirmata2.Arduino(self.device_path)
                 self.pwm_pin = self.board.get_pin(f'd:{self.motor_pwm_pin}:p')
                 self.get_logger().info(f"Arduino connected on {self.device_path}, using pin D{self.motor_pwm_pin}")
-            else:
-                self.get_logger().warn("Parameter 'device_path' set to 'None'; skipping Arduino connection.")
         except Exception as e:
-            self.get_logger().error(f"Failed to connect to Arduino: {e}")
-            self.get_logger().warn("Continuing without motor control. Only chirp will function.")
+            self.get_logger().warn(f"Failed to connect to Arduino: {e}\n Continuing without motor control. Only chirp will function.")
 
         # Motor state
         self.motor_state = False

@@ -24,7 +24,6 @@ setup(
         'matplotlib',
         'opencv-python',
         'cv_bridge',
-        'pyaudio',
         'pyfirmata2',
     ],
     zip_safe=True,

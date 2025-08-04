@@ -61,7 +61,7 @@ def create_gui(node: SetBGClient):
         try:
             result = node.send_request(service_name)
             if result.success:
-                messagebox.showinfo("Success", result.message)
+                print(f"[INFO] {result.message}")  # Console log only
             else:
                 messagebox.showerror("Failed", result.message)
         except Exception as e:
