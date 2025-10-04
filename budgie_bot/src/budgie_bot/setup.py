@@ -34,11 +34,11 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'camera = budgie_bot.camera:main',
             'bird_detector = budgie_bot.bird_detector:main',
             'audio_rms = budgie_bot.audio_rms:main',
             'audio_spectrogram = budgie_bot.audio_spectrogram:main',
             'react_behavior = budgie_bot.react_behavior:main',
-            'log_test = budgie_bot.log_test:main',
         ],
     },
 )

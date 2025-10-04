@@ -1,128 +1,107 @@
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
-from sensor_msgs.msg import Image
-from cv_bridge import CvBridge
+from sensor_msgs.msg import CompressedImage
 from std_srvs.srv import Trigger
-import importlib
 import cv2
+import importlib
 import time
 from datetime import datetime
+import numpy as np
 
-
-class SingleCameraNode(Node):
+class BirdDetectorNode(Node):
     def __init__(self):
-        super().__init__('single_camera_node')
+        super().__init__('bird_detector')
 
-        self.declare_parameter('camera_id', '0')
-        self.declare_parameter('inference_fps', 5.0)
+        # Parameters
+        self.declare_parameter('detector_name', 'bg_subtract')
         self.declare_parameter('min_motion_area', 500)
-        self.declare_parameter('detection_mode', 'bg_subtract')
         self.declare_parameter('font_scale', 0.7)
         self.declare_parameter('font_thickness', 2)
+        self.declare_parameter('detection_fps', 5.0)
 
-        self.cam_id = self.get_parameter('camera_id').value
-        self.fps = self.get_parameter('inference_fps').value
+        detector_name = self.get_parameter('detector_name').value
         self.min_area = self.get_parameter('min_motion_area').value
-        self.mode = self.get_parameter('detection_mode').value
         self.font_scale = self.get_parameter('font_scale').value
         self.font_thickness = self.get_parameter('font_thickness').value
+        self.fps = self.get_parameter('detection_fps').value
 
         self.font = cv2.FONT_HERSHEY_SIMPLEX
-        self.bridge = CvBridge()
 
-        self.motion_pub = self.create_publisher(String, 'motion_detected', 10)
-        self.image_pub = self.create_publisher(Image, 'motion_frame', 10)
-        
-        # Load detector
+        # Load detector dynamically
         try:
-            det_module = importlib.import_module(f"budgie_bot.detectors.{self.mode}")
-            self.detector = getattr(det_module, self.mode)
+            det_module = importlib.import_module(f"budgie_bot.detectors.{detector_name}")
+            self.detector_fn = getattr(det_module, detector_name)
+            self.get_logger().info(f"Loaded detector: {detector_name}")
         except Exception as e:
-            self.get_logger().error(f"Detector '{self.mode}' not found: {e}")
+            self.get_logger().error(f"Failed to load detector '{detector_name}': {e}")
             rclpy.shutdown()
             return
 
-        self.cap = cv2.VideoCapture(int(self.cam_id)) if self.cam_id.isdigit() else cv2.VideoCapture(self.cam_id)
-        
-        # Set video codec for WSL2 compatibility (comment out if not needed)
-        self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-        if not self.cap.isOpened():
-            self.get_logger().error(f"Could not open camera {self.cam_id}")
-            rclpy.shutdown()
-            return
+        # Publishers
+        self.motion_pub = self.create_publisher(String, 'motion_detected', 10)
+        self.image_pub = self.create_publisher(CompressedImage, 'motion_frame/compressed', 10)
 
-        ok, first_frame = self.cap.read()
-        if not ok:
-            self.get_logger().error(f"Camera {self.cam_id} returned no frames")
-            rclpy.shutdown()
-            return
+        # Subscriber to compressed camera feed
+        self.sub = self.create_subscription(CompressedImage, 'camera/image_raw/compressed', self.callback, 1)
 
-        self.state = self.detector("init", first_frame, self.min_area)
+        # Background reset service
+        self.create_service(Trigger, 'set_background', self.handle_set_background)
+
+        # Internal state
+        self.state = self.detector_fn("init", None, self.min_area)
         self.last_inf_t = time.time()
-        self.last_motion = False
         self.bg_reset = False
+        self.last_motion = False
 
-        self.create_timer(1.0 / self.fps, self.process_frame)
-        self.create_service(Trigger, f'/cam/cam{self.cam_id}/set_background', self.handle_set_background)
-
-    def process_frame(self):
-        ok, frame = self.cap.read()
-        if not ok:
-            return
-
+    def callback(self, msg: CompressedImage):
+        # Throttle FPS
         now = time.time()
-        if now - self.last_inf_t >= 1.0 / self.fps:
-            self.last_inf_t = now
-            motion, self.state = self.detector("detect", frame, self.min_area, self.state)
-            self.last_motion = bool(motion)
-            msg = f"{datetime.now().isoformat(timespec='seconds')},{self.cam_id},{int(motion)}"
-            self.motion_pub.publish(String(data=msg))
+        if now - self.last_inf_t < 1.0 / self.fps:
+            return
+        self.last_inf_t = now
 
+        # Decode JPEG to OpenCV frame
+        np_arr = np.frombuffer(msg.data, np.uint8)
+        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+
+        # Background reset if requested
         if self.bg_reset:
-            self.state = self.detector("set_bg", frame, self.min_area, self.state)
+            self.state = self.detector_fn("set_bg", frame, self.min_area, self.state)
             self.bg_reset = False
+            self.get_logger().info("Background reset completed.")
 
-        label = "BIRD" if self.last_motion else "NO BIRD"
-        color = (0, 255, 0) if self.last_motion else (0, 0, 255)
+        # Motion detection
+        motion, self.state = self.detector_fn("detect", frame, self.min_area, self.state)
+        self.last_motion = bool(motion)
+        self.motion_pub.publish(String(
+            data=f"{datetime.now().isoformat(timespec='seconds')},motion={int(motion)}"
+        ))
+
+        # Annotate frame
+        label = "BIRD" if motion else "NO BIRD"
+        color = (0, 255, 0) if motion else (0, 0, 255)
         cv2.putText(frame, label, (10, 30), self.font, self.font_scale, color, self.font_thickness, cv2.LINE_AA)
-        
-        # Draw BG thumbnail inset
-        bg_img = self.state.get("bg") if isinstance(self.state, dict) else None
-        if bg_img is not None:
-            H, W = frame.shape[:2]
-            inset_h, inset_w = H // 4, W // 4  # Quarter size thumbnail
-            bg_thumb = cv2.resize(bg_img, (inset_w, inset_h))
 
-            # Position: bottom right with 10px margin
-            y1, y2 = H - inset_h - 10, H - 10
-            x1, x2 = W - inset_w - 10, W - 10
-
-            # Blend for transparency
-            roi = frame[y1:y2, x1:x2]
-            cv2.addWeighted(bg_thumb, 0.4, roi, 0.6, 0, dst=roi)
-
-            # Optional border and label
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 255), 1)
-            cv2.putText(frame, "BG", (x1 + 4, y1 + 14),
-                        self.font, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
-
-        msg = self.bridge.cv2_to_imgmsg(frame, encoding="bgr8")
-        self.image_pub.publish(msg)
-        cv2.imshow(f"Cam {self.cam_id}", frame)
-        cv2.waitKey(1)
+        # Publish compressed annotated frame
+        out_msg = CompressedImage()
+        out_msg.format = "jpeg"
+        out_msg.data = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])[1].tobytes()
+        self.image_pub.publish(out_msg)
 
     def handle_set_background(self, request, response):
         self.bg_reset = True
         response.success = True
-        response.message = f"Background reset for camera {self.cam_id}"
+        response.message = "Background reset requested"
         return response
 
 
 def main():
     rclpy.init()
-    node = SingleCameraNode()
+    node = BirdDetectorNode()
     rclpy.spin(node)
     node.destroy_node()
-    cv2.destroyAllWindows()
     rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()

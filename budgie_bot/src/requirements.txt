@@ -1,3 +1,6 @@
 opencv-python
 pyfirmata2
+sounddevice
 ultralytics
+PyQt5
+catkin_pkg

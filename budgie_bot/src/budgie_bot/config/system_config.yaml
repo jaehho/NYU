@@ -1,13 +1,17 @@
-bird_detector_cam0:
+cam0:
   ros__parameters:
     camera_id: "0"
-    inference_fps: 5.0
+    fps: 30.0
+
+bird_detector0:
+  ros__parameters:
+    detector_name: "bg_subtract"
     min_motion_area: 500
-    detection_mode: "yolo"
     font_scale: 0.7
     font_thickness: 2
+    detection_fps: 5.0
 
-mic0_node:
+mic0:
   ros__parameters:
     mic_name: "mic0"
     samplerate: 16000

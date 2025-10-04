@@ -18,18 +18,20 @@ def generate_launch_description():
     launch_actions = []
     mic_plot_topics = []
 
+    # Iterate through nodes
     for node_name, node_config in config_data.items():
         params = node_config.get('ros__parameters', {})
 
-        # Bird detector node
-        if node_name.startswith('bird_detector_'):
+        # === CAMERA GROUP ===
+        if node_name.startswith('cam'):
             cam_id = str(params.get('camera_id', '0'))
-            namespace = f'cam{cam_id}'  # Avoid numeric-only namespaces
+            namespace = f'cam{cam_id}'
 
+            # Camera Node
             launch_actions.append(
                 Node(
                     package='budgie_bot',
-                    executable='bird_detector',
+                    executable='camera',
                     name=node_name,
                     namespace=namespace,
                     parameters=[params],
@@ -37,13 +39,41 @@ def generate_launch_description():
                 )
             )
 
-        # Mic amplitude and spectrogram nodes
-        elif node_name.startswith('mic') and node_name.endswith('_node'):
-            mic_name = params.get('mic_name', 'micX')
-            mic_suffix = mic_name[-1]  # '0' from 'mic0'
+            # Bird Detector Node (suffix match: bird_detector0 for cam0)
+            detector_name = f'bird_detector{cam_id}'
+            if detector_name in config_data:
+                detector_params = config_data[detector_name].get('ros__parameters', {})
+                launch_actions.append(
+                    Node(
+                        package='budgie_bot',
+                        executable='bird_detector',
+                        name=detector_name,
+                        namespace=namespace,
+                        parameters=[detector_params],
+                        output='screen'
+                    )
+                )
+
+            # Image Viewer Node for motion_frame
+            launch_actions.append(
+                Node(
+                    package='image_view',
+                    executable='image_view',
+                    name=f'motion_frame_viewer_{cam_id}',
+                    namespace=namespace,
+                    remappings=[('image', 'motion_frame')],  # resolves to /camX/motion_frame
+                    parameters=[{'image_transport': 'compressed'}],
+                    output='screen'
+                )
+            )
+
+        # === MICROPHONE GROUP ===
+        elif node_name.startswith('mic'):
+            mic_name = params.get('mic_name', node_name)
+            mic_suffix = mic_name[-1]  # assumes mic0, mic1, etc.
             namespace = f'mic{mic_suffix}'
 
-            # Amplitude node
+            # Amplitude Node
             launch_actions.append(
                 Node(
                     package='budgie_bot',
@@ -55,7 +85,7 @@ def generate_launch_description():
                 )
             )
 
-            # Spectrogram node (reuses mic params)
+            # Spectrogram Node
             launch_actions.append(
                 Node(
                     package='budgie_bot',
@@ -67,9 +97,10 @@ def generate_launch_description():
                 )
             )
 
+            # For rqt_plot
             mic_plot_topics.append(f'/{namespace}/audio_amplitude/data')
 
-        # React behavior node (motor trigger)
+        # === REACT BEHAVIOR NODE ===
         elif node_name == 'react_behavior':
             launch_actions.append(
                 Node(
@@ -81,7 +112,7 @@ def generate_launch_description():
                 )
             )
 
-    # Launch background reset GUI
+    # === GUI for background reset ===
     launch_actions.append(
         ExecuteProcess(
             cmd=['python', gui_script],
@@ -90,7 +121,7 @@ def generate_launch_description():
         )
     )
 
-    # rqt_plot for mic amplitude curves
+    # === rqt_plot for mic amplitude curves ===
     if mic_plot_topics:
         launch_actions.append(
             ExecuteProcess(
@@ -100,7 +131,7 @@ def generate_launch_description():
             )
         )
 
-    # rqt_console for logs
+    # === rqt_console for logs ===
     launch_actions.append(
         ExecuteProcess(
             cmd=['ros2', 'run', 'rqt_console', 'rqt_console'],
