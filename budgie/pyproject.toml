@@ -1,0 +1,55 @@
+[build-system]
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "budgie"
+version = "0.0.1"
+description = "A short description of the project."
+authors = [
+  { name = "Jaeho" },
+]
+license = { file = "LICENSE" }
+readme = "README.md"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License"
+]
+dependencies = [
+    "hdbscan>=0.8.40",
+    "ipython",
+    "ipywidgets>=8.1.8",
+    "jupyter>=1.1.1",
+    "jupyterlab",
+    "librosa>=0.11.0",
+    "loguru",
+    "matplotlib",
+    "mkdocs",
+    "notebook",
+    "numpy",
+    "pandas",
+    "pip",
+    "python-dotenv",
+    "ruff",
+    "scikit-image>=0.25.2",
+    "scikit-learn",
+    "soundfile>=0.13.1",
+    "tqdm",
+    "typer",
+    "umap-learn>=0.5.9.post2",
+]
+requires-python = "~=3.12.0"
+
+
+[tool.ruff]
+line-length = 99
+src = ["budgie"]
+include = ["pyproject.toml", "budgie/**/*.py"]
+
+[tool.ruff.lint]
+extend-select = ["I"]  # Add import sorting
+
+[tool.ruff.lint.isort]
+known-first-party = ["budgie"]
+force-sort-within-sections = true
+
